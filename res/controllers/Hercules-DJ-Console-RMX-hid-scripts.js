@@ -1,8 +1,8 @@
 /****************************************************************/
 /*      Hercules DJ Console RMX HID controller script           */
-/*      For Mixxx version 2.1                                   */
+/*      For Mixxx version 1.11                                  */
 /*      Author: RichterSkala                                    */
-/*      Contributors: Markus Kohlhase, Jesse French             */
+/*      Contributors: Markus Kohlhase                           */
 /*      Based on zestoi's script                                */
 /****************************************************************/
 
@@ -30,6 +30,14 @@ RMX.jog_skip =  {
 
 RMX.shift = false; // controlled via stop button
 
+RMX.caps = false; // extra shift, toggled via mic button.
+
+// extra extra shift per dec, toggled via source button.
+RMX.select = {
+  "[Channel1]": false,
+  "[Channel2]": false
+};
+
 //Config:
 RMX.eq_max = 4; //eq max value. Full range =4, minimal value (=linear) =2
 
@@ -45,37 +53,19 @@ RMX.init = function() {
   // deck controls (will work for any decks as the group is passed in)
 
   c.capture("crossfader", "all", function(g, e, v) {
-    engine.setValue(g, e, (v - 128) / 126);
+    engine.setValue(g, e, (v - 128) / 128);
   });
 
   c.capture("balance", "all", function(g, e, v) {
     engine.setValue(g, e, (v-128) / 128);
   });
 
-  // brake / soft start on shift (stop) + play
+  // TODO: Brake on shift + play ... or find a better button.
   c.capture("play", "press", function(g, e, v) {
-
-    if(RMX.shift){ // if stop button pressed
-      var deck = parseInt(g.substring(8,9)); // work out which deck we are using
-      if(!engine.getValue(g, 'play')){ // if not playing
-        engine.softStart(deck, true);
-      } else {
-        engine.brake(deck, true);
-      }
-    } else { 
-      engine.setValue(g, e, !engine.getValue(g, e)); // toggle play
-    }
-  });
-
-  c.capture("play_indicator", "all", function(g, e, v) {
-    engine.setValue(g, e, v);
+    engine.setValue(g, e, !engine.getValue(g, e));
   });
 
   c.capture("cue_default", "all", function(g, e, v) {
-    engine.setValue(g, e, v);
-  });
-
-  c.capture("cue_indicator", "all", function(g, e, v) {
     engine.setValue(g, e, v);
   });
 
@@ -85,84 +75,42 @@ RMX.init = function() {
   });
 
   c.capture("volume", "all", function(g, e, v) {
-    if (g === '[Master]'){
-      engine.setValue(g,e,Math.pow(v,2)/13107.2);
-    } else {
-      engine.setValue(g, e, v/256);
-    }
+    engine.setValue(g, e, v / 256);
   });
 
   // gain & filters go from 0..1..4 in mixxx, scale in fct.
   c.capture("pregain", "all", c.filter_scale);
 
-
-  // when shift key is pressed, filter knobs control FX meta knobs
-  c.capture("filterHigh", "all", function(g,e,v){
-    if(RMX.shift){
-      if(g==="[Channel1]"){
-        engine.setParameter("[EffectRack1_EffectUnit1_Effect1]", "meta", v/256);
-      } else if (g==="[Channel2]"){
-        engine.setParameter("[EffectRack1_EffectUnit2_Effect1]", "meta", v/256);
-      }
-    }
-    else {c.filter_scale(g,e,v);}
-  });
-  c.capture("filterMid",  "all", function(g,e,v){
-    if(RMX.shift){
-      if(g==="[Channel1]"){
-        engine.setParameter("[EffectRack1_EffectUnit1_Effect2]", "meta", v/256);
-      } else if (g==="[Channel2]"){
-        engine.setParameter("[EffectRack1_EffectUnit2_Effect2]", "meta", v/256);
-      }
-    }
-    else {c.filter_scale(g,e,v);}
-  });
-  c.capture("filterLow",  "all", function(g,e,v){
-    if(RMX.shift){
-      if(g==="[Channel1]"){
-        engine.setParameter("[EffectRack1_EffectUnit1_Effect3]", "meta", v/256);
-      } else if (g==="[Channel2]"){
-        engine.setParameter("[EffectRack1_EffectUnit2_Effect3]", "meta", v/256);
-      }
-    }
-    else {c.filter_scale(g,e,v);}
-  });
+  // TODO: Think about adapting to effects branch, or at least flanger.
+  c.capture("filterHigh", "all", c.filter_scale);
+  c.capture("filterMid",  "all", c.filter_scale);
+  c.capture("filterLow",  "all", c.filter_scale);
 
   // Handle Jog-wheel in own function
   c.capture("jog", "all", c.jog);
 
-  // stop toggle for shift
+  // stop and mic toggle for shift
   c.capture("stop", "all", function(g,e,v) { RMX.shift = v > 0? 1 : 0; });
+  c.capture("mic_toggle", "all", function(g,e,v) { RMX.caps = v > 0? 1:0; });
+    //mic button is toggled in hardware: value doesn't change on release
+  // source toggle for shift
+  c.capture("source","press", function(g,e,v) {
+    RMX.select[g] = !RMX.select[g];
+    c.send(g, e, RMX.select[g] ? 1:0);
+  });
 
   c.capture("previous", "all", function(g, e, v) {
-      if (RMX.shift) {
-        engine.setValue(g, "loop_halve", !engine.getValue(g, "loop_halve"));     //halve the loop when shift + rew pressed
-      }
-      
-      else if (engine.getValue(g, "loop_enabled")){
-        engine.setValue (g, "loop_end_position", engine.getValue(g, "loop_end_position") - 450); //adjust loop out position when loop is enabled
-      }
-      
-      else {
-        engine.setValue(g, "back", v > 0 ? 1 : 0);
-      }
+      engine.setValue(g, "back", v > 0 ? 1 : 0);
     }
   );
 
-  c.capture("next", "all", function(g, e, v) { 
-    if (RMX.shift) {
-      engine.setValue(g, "loop_double", !engine.getValue(g, "loop_double"));      //double the loop when shift + next pressed
-    }
-    else if (engine.getValue(g, "loop_enabled")){
-      engine.setValue (g, "loop_end_position", 450 + engine.getValue(g, "loop_end_position"));  //adjust loop out position when loop is enabled
-    }
-    else{
+  c.capture("next", "all", function(g, e, v) {
       engine.setValue(g, "fwd", v > 0 ? 1 : 0);
-    }
-  }  
-  );
+
+  });
 
   // track browsing
+  // TODO: Maybe use shift for fx selection?
 
   c.capture("menu_up", "all", c.scroll_tracks);
 
@@ -199,7 +147,7 @@ RMX.init = function() {
     engine.setValue(g,"keylock",!engine.getValue(g, "keylock"));
   });
 
-  c.capture("pitch_reset", "press", function(g, e, v) {
+  c.capture("pitch_set_default", "press", function(g, e, v) {
     engine.setValue(g,"rate",0);
   });
 
@@ -227,73 +175,29 @@ RMX.init = function() {
   c.capture("keypad4","all", function(g, e, v) {
     engine.setValue(g,"hotcue_4_activate",v)
   } );
-  
+
   c.capture("keypad5","all", function(g, e, v) {
-    if (RMX.shift){
-      engine.setValue(g,"beatlooproll_activate",v)
-    }
-    else engine.setValue(g,"loop_in",v) 
+    engine.setValue(g,"loop_in",v)
   } );
   c.capture("keypad6","all", function(g, e, v) {
-    if(RMX.shift){
-      engine.setValue(g, "reloop_exit", !engine.getValue(g, "reloop_exit"));
-    }
-    else engine.setValue(g,"loop_out",!engine.getValue(g, "loop_out"))
+    engine.setValue(g,"loop_out",v)
   } );
 
   var filterKill = function(g, e, v) {
     engine.setValue(g, e, !engine.getValue(g, e));
   };
 
-  // when shift enabled, filter kill buttons turn on / off FX
-  c.capture("filterHighKill","press", function(g, e, v){
-    if(!RMX.shift){
-      filterKill(g,e,v);
-    }
-    else {
-      if(g==="[Channel1]"){
-        engine.setValue("[EffectRack1_EffectUnit1_Effect1]", "enabled", !engine.getValue("[EffectRack1_EffectUnit1_Effect1]", "enabled", v))
-      } else if(g==="[Channel2]"){
-        engine.setValue("[EffectRack1_EffectUnit2_Effect1]", "enabled", !engine.getValue("[EffectRack1_EffectUnit2_Effect1]", "enabled", v))
-      }
-    }
-  });
-  c.capture("filterMidKill", "press", function(g, e, v){
-    if(!RMX.shift){
-      filterKill(g,e,v);
-    }
-    else {
-      if(g==="[Channel1]"){
-        engine.setValue("[EffectRack1_EffectUnit1_Effect2]", "enabled", !engine.getValue("[EffectRack1_EffectUnit1_Effect2]", "enabled", v))
-      } else if(g==="[Channel2]"){
-        engine.setValue("[EffectRack1_EffectUnit2_Effect2]", "enabled", !engine.getValue("[EffectRack1_EffectUnit2_Effect2]", "enabled", v))
-      }
-    }
-  });
-  c.capture("filterLowKill", "press", function(g, e, v){
-    if(!RMX.shift){
-      filterKill(g,e,v);
-    }
-    else {
-      if(g==="[Channel1]"){
-        engine.setValue("[EffectRack1_EffectUnit1_Effect3]", "enabled", !engine.getValue("[EffectRack1_EffectUnit1_Effect3]", "enabled", v))
-      } else if(g==="[Channel2]"){
-        engine.setValue("[EffectRack1_EffectUnit2_Effect3]", "enabled", !engine.getValue("[EffectRack1_EffectUnit2_Effect3]", "enabled", v))
-      }
-    }
-  });
+  c.capture("filterHighKill","press", filterKill);
+  c.capture("filterMidKill", "press", filterKill);
+  c.capture("filterLowKill", "press", filterKill);
 
   var pipe = function(g, e, v) { c.send(g,e,v); };
 
   // led feedback
   c.feedback("[Channel1]", "play",        pipe);
-  c.feedback("[Channel1]", "play_indicator",        pipe);
   c.feedback("[Channel2]", "play",        pipe);
-  c.feedback("[Channel2]", "play_indicator",        pipe);
   c.feedback("[Channel1]", "cue_default", pipe);
-  c.feedback("[Channel1]", "cue_indicator", pipe);
   c.feedback("[Channel2]", "cue_default", pipe);
-  c.feedback("[Channel2]", "cue_indicator", pipe);
   c.feedback("[Channel1]", "beatsync",    pipe);
   c.feedback("[Channel2]", "beatsync",    pipe);
 
@@ -313,35 +217,6 @@ RMX.init = function() {
     function(g, e, v) { c.send(g, "headphone_cue", v);
   });
 
-
-  RMX.shutdown = function() {
-    var c = RMX; 
-    for (id in c.leds) {
-      c.send(c.leds[id].group, c.leds[id].name, 0);
-    }
-  }
-
-  // Enable soft-takeover for all direct hardware controls
-  // engine.softTakeover("[Channel1]","rate",true);
-  engine.softTakeover("[Channel1]","volume",true);
-  engine.softTakeover("[Channel1]","pregain",true);
-  engine.softTakeover("[Channel1]","filterHigh",true);
-  engine.softTakeover("[Channel1]","filterMid",true);
-  engine.softTakeover("[Channel1]","filterLow",true);
-  // engine.softTakeover("[Channel2]","rate",true);
-  engine.softTakeover("[Channel2]","volume",true);
-  engine.softTakeover("[Channel2]","pregain",true);
-  engine.softTakeover("[Channel2]","filterHigh",true);
-  engine.softTakeover("[Channel2]","filterMid",true);
-  engine.softTakeover("[Channel2]","filterLow",true);
-  // engine.softTakeover("[Master]","crossfader",true);
-  // engine.softTakeover("[Master]","headVolume",true);
-  // engine.softTakeover("[Master]","headMix",true);
-  // engine.softTakeover("[Master]","volume",true);
-  // engine.softTakeover("[Master]","balance",true);
-
-
-
 };
 
 // playlist scroll nex/previous with auto-repeat when held
@@ -353,8 +228,7 @@ RMX.scroll_tracks = function(g, e, v) {
     engine.setValue("[Playlist]", direction, 1);
 
     if (!RMX.scroll_timer) {
-      var callback = 'RMX.scroll_tracks("[Playlist]","' + e + '",' + v + ')';
-      RMX.scroll_timer = engine.beginTimer(140, callback);
+      RMX.scroll_timer = engine.beginTimer(150, () => RMX.scroll_tracks("Playlist", e, v), true);
     }
   }
   else {
@@ -408,8 +282,7 @@ RMX.jog = function(g, e, v, ctrl) {
     }
     engine.scratchTick(deck, ctrl.relative);
 
-    var callback = 'RMX.stopScratching(\"' + g + '\")';
-    RMX.scratchTimer = engine.beginTimer(20, callback, true);
+    RMX.scratchTimer = engine.beginTimer(20, () => RMX.stopScratching(g), true);
   }
 
   // fine jog mode when playing
@@ -417,7 +290,7 @@ RMX.jog = function(g, e, v, ctrl) {
     engine.setValue(g, e, ctrl.relative/2);
   }
 
-  // track browsing when shift held and not playing
+  // track browsing when shift held (sync) and not playing
   else if (RMX.shift) {
     engine.setValue("[Playlist]", "SelectTrackKnob", ctrl.relative);
   }
@@ -463,12 +336,16 @@ RMX.define_hid_format = function() {
   c.add_control(pid, "filterHighKill",    "[Channel1]", "button", 2, 0x20);
   c.add_control(pid, "filterMidKill",     "[Channel1]", "button", 2, 0x40);
   c.add_control(pid, "filterLowKill",     "[Channel1]", "button", 2, 0x80);
-  c.add_control(pid, "pitch_reset",       "[Channel1]", "button", 3, 0x01);
+  c.add_control(pid, "pitch_set_default", "[Channel1]", "button", 3, 0x01);
   c.add_control(pid, "LoadSelectedTrack", "[Channel1]", "button", 3, 0x02);
   c.add_control(pid, "source",            "[Channel1]", "button", 3, 0x04);
   c.add_control(pid, "headphone_cue",     "[Channel1]", "button", 3, 0x08);
 
   // deck 2 - buttons
+  c.add_control(pid, "beatlock",          "[Channel2]", "button", 3, 0x10);
+  c.add_control(pid, "LoadSelectedTrack", "[Channel2]", "button", 3, 0x20);
+  c.add_control(pid, "source",            "[Channel2]", "button", 3, 0x40);
+  c.add_control(pid, "headphone_cue",     "[Channel2]", "button", 3, 0x80);
   c.add_control(pid, "keypad1",           "[Channel2]", "button", 4, 0x01);
   c.add_control(pid, "keypad2",           "[Channel2]", "button", 4, 0x02);
   c.add_control(pid, "keypad3",           "[Channel2]", "button", 4, 0x04);
@@ -476,7 +353,7 @@ RMX.define_hid_format = function() {
   c.add_control(pid, "keypad5",           "[Channel2]", "button", 4, 0x10);
   c.add_control(pid, "keypad6",           "[Channel2]", "button", 4, 0x20);
   c.add_control(pid, "beatsync",          "[Channel2]", "button", 4, 0x40);
-  c.add_control(pid, "beatlock",          "[Channel2]", "button", 3, 0x10);
+  c.add_control(pid, "pitch_set_default", "[Channel2]", "button", 4, 0x80);
   c.add_control(pid, "previous",          "[Channel2]", "button", 5, 0x01);
   c.add_control(pid, "next",              "[Channel2]", "button", 5, 0x02);
   c.add_control(pid, "play",              "[Channel2]", "button", 5, 0x04);
@@ -485,10 +362,6 @@ RMX.define_hid_format = function() {
   c.add_control(pid, "filterHighKill",    "[Channel2]", "button", 5, 0x20);
   c.add_control(pid, "filterMidKill",     "[Channel2]", "button", 5, 0x40);
   c.add_control(pid, "filterLowKill",     "[Channel2]", "button", 5, 0x80);
-  c.add_control(pid, "pitch_reset",       "[Channel2]", "button", 4, 0x80);
-  c.add_control(pid, "LoadSelectedTrack", "[Channel2]", "button", 3, 0x20);
-  c.add_control(pid, "source",            "[Channel2]", "button", 3, 0x40);
-  c.add_control(pid, "headphone_cue",     "[Channel2]", "button", 3, 0x80);
 
   // master buttons
   c.add_control(pid, "scratch",           "[Master]",   "button", 6, 0x01);
@@ -528,33 +401,22 @@ RMX.define_hid_format = function() {
   pid = 0x00;
   c.cache_out[pid] = [ pid, 0x0, 0x0, 0x0 ];
 
-  // Last argument (hex) selects which LED, the integer before selects deck - figured out by RichterSkala
-  // But I (Jesse) can't figure out how to make rhem blink! Says it's supported by controller's MIDI implementation...
-  // but HID != MIDI
-  //
-  // Forum user 'neale' suggests 'try twiddling the value you send to the control and the control number',
-  // but I can't figure out how to do that here.
-  //
-  // However, I switched to "play_indicator" and "cue_indicator" instead of "play" and "cue_default" respectively,
-  // and original blinking play button issue appears to be fixed...there is now some response to changing cue mode in Mixxx prefs
-  // - Jesse
-
-  c.add_control(pid, "scratch",       "[Master]",   "led", 1, 0x01); 
-  c.add_control(pid, "play_indicator","[Channel1]", "led", 1, 0x02); 
-  c.add_control(pid, "cue_indicator", "[Channel1]", "led", 1, 0x04);
+  c.add_control(pid, "scratch",       "[Master]",   "led", 1, 0x01); // blinking: 3, 0x2
+  c.add_control(pid, "play",          "[Channel1]", "led", 1, 0x02); // blinking: 3, 0x2
+  c.add_control(pid, "cue_default",   "[Channel1]", "led", 1, 0x04);
   c.add_control(pid, "headphone_cue", "[Channel1]", "led", 1, 0x08);
   c.add_control(pid, "source",        "[Channel1]", "led", 1, 0x10);
   c.add_control(pid, "beatsync",      "[Channel1]", "led", 1, 0x20);
   c.add_control(pid, "beatlock",      "[Channel1]", "led", 1, 0x40);
-  c.add_control(pid, "pitch_reset",   "[Channel1]", "led", 1, 0x80);
+  c.add_control(pid, "pitch_set_default", "[Channel1]", "led", 1, 0x80);
 
-  c.add_control(pid, "play_indicator","[Channel2]", "led", 2, 0x02);
-  c.add_control(pid, "cue_indicator", "[Channel2]", "led", 2, 0x04);
-  c.add_control(pid, "headphone_cue", "[Channel2]", "led", 2, 0x08);
+  c.add_control(pid, "play",          "[Channel2]", "led", 2, 0x02); // blinking: 2, 0x02
+  c.add_control(pid, "cue_default",   "[Channel2]", "led", 2, 0x04); // blinking: 2, 0x04
+  c.add_control(pid, "headphone_cue", "[Channel2]", "led", 2, 0x08); // blinking: 2, 0x08
   c.add_control(pid, "source",        "[Channel2]", "led", 2, 0x10);
-  c.add_control(pid, "beatsync",      "[Channel2]", "led", 2, 0x20);
-  c.add_control(pid, "beatlock",      "[Channel2]", "led", 2, 0x80);
-  c.add_control(pid, "pitch_reset",   "[Channel2]", "led", 2, 0x40);
+  c.add_control(pid, "beatsync",      "[Channel2]", "led", 2, 0x20); // blinking: 2, 0x20
+  c.add_control(pid, "beatlock",      "[Channel2]", "led", 2, 0x80); // blinking: 2, 0x80
+  c.add_control(pid, "pitch_set_default", "[Channel2]", "led", 2, 0x40); // blinking: 2, 0x40
 
 };
 
